@@ -222,6 +222,7 @@ impl Playlist {
                 return Ok(Some(Tag::ExtXPart {
                     uri: uri.to_string(),
                     duration: Some(duration),
+                    independent: None,
                 }));
             }
         }
@@ -256,6 +257,7 @@ impl Playlist {
                     can_seek: Some(can_seek),
                     can_pause: Some(can_pause),
                     min_buffer_time: Some(min_buffer_time),
+                    can_block_reload: None,
                 }));
             }
         }
@@ -410,7 +412,7 @@ impl Playlist {
             if let Some(caps) = preload_hint_re.captures(trimmed) {
                 let uri = caps.get(1).unwrap().as_str().to_string();
                 let byterange = Some(caps.get(2).unwrap().as_str().to_string());
-                return Ok(Some(Tag::ExtXPreloadHint { uri, byterange }));
+                return Ok(Some(Tag::ExtXPreloadHint { type_: None, uri, byterange }));
             }
         }
 

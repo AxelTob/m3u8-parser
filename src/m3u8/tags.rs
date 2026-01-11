@@ -91,6 +91,7 @@ pub enum Tag {
         can_seek: Option<bool>,
         can_pause: Option<bool>,
         min_buffer_time: Option<f32>,
+        can_block_reload: Option<bool>,
     },
     /// Represents part information.
     ExtXPartInf {
@@ -100,6 +101,7 @@ pub enum Tag {
     },
     /// Represents a preload hint.
     ExtXPreloadHint {
+        type_: Option<String>,
         uri: String,
         /// Optional byte range for the preload hint.
         byterange: Option<String>,
@@ -110,7 +112,7 @@ pub enum Tag {
     ExtXPart {
         uri: String,
         duration: Option<f32>,
-        // additional fields if necessary
+        independent: Option<bool>,
     },
     /// Indicates a skip in the playlist.
     ExtXSkip {
@@ -355,8 +357,12 @@ impl std::fmt::Display for Tag {
                 can_seek,
                 can_pause,
                 min_buffer_time,
+                can_block_reload,
             } => {
                 write!(f, "#EXT-X-SERVER-CONTROL")?;
+                if let Some(can_block_reload) = can_block_reload {
+                    write!(f, ":CAN-BLOCK-RELOAD={}", if *can_block_reload { "YES" } else { "NO" })?;
+                }
                 if let Some(can_play) = can_play {
                     write!(f, ",CAN-PLAY={}", if *can_play { "YES" } else { "NO" })?;
                 }
@@ -385,8 +391,12 @@ impl std::fmt::Display for Tag {
                 }
                 Ok(())
             }
-            Tag::ExtXPreloadHint { uri, byterange } => {
-                let mut result = format!("#EXT-X-PRELOAD-HINT:URI=\"{}\"", uri);
+            Tag::ExtXPreloadHint { type_, uri, byterange } => {
+                let mut result = String::from("#EXT-X-PRELOAD-HINT:");
+                if let Some(type_val) = type_ {
+                    result.push_str(&format!("TYPE={},", type_val));
+                }
+                result.push_str(&format!("URI=\"{}\"", uri));
                 if let Some(byterange) = byterange {
                     result.push_str(&format!(",BYTERANGE={}", byterange));
                 }
@@ -399,10 +409,15 @@ impl std::fmt::Display for Tag {
                     uri, bandwidth
                 )
             }
-            Tag::ExtXPart { uri, duration } => {
+            Tag::ExtXPart { uri, duration, independent } => {
                 write!(f, "#EXT-X-PART:URI=\"{}\"", uri)?;
                 if let Some(duration) = duration {
                     write!(f, ",DURATION={}", duration)?;
+                }
+                if let Some(independent) = independent {
+                    if *independent {
+                        write!(f, ",INDEPENDENT=YES")?;
+                    }
                 }
                 Ok(())
             }
