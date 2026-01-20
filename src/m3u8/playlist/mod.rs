@@ -228,17 +228,28 @@ impl Playlist {
         }
 
         if trimmed.starts_with("EXT-X-PART-INF") {
-            // Example: #EXT-X-PART-INF:PART-TARGET-DURATION=5.0,PART-HOLD-BACK=2.0
+            // Example: #EXT-X-PART-INF:PART-TARGET=5.0
+            // Note: PART-HOLD-BACK is now in EXT-X-SERVER-CONTROL, not here
             let part_inf_re = Regex::new(
-                r#"EXT-X-PART-INF:PART-TARGET-DURATION=([\d\.]+),PART-HOLD-BACK=([\d\.]+)"#,
+                r#"EXT-X-PART-INF:PART-TARGET=([\d\.]+)"#,
             )
             .unwrap();
             if let Some(caps) = part_inf_re.captures(trimmed) {
                 let part_target_duration = caps.get(1).unwrap().as_str().parse().unwrap();
-                let part_hold_back = caps.get(2).map(|m| m.as_str().parse().unwrap());
                 return Ok(Some(Tag::ExtXPartInf {
                     part_target_duration,
-                    part_hold_back,
+                    part_number: None,
+                }));
+            }
+            // Also try PART-TARGET-DURATION for backwards compatibility
+            let part_inf_re_alt = Regex::new(
+                r#"EXT-X-PART-INF:PART-TARGET-DURATION=([\d\.]+)"#,
+            )
+            .unwrap();
+            if let Some(caps) = part_inf_re_alt.captures(trimmed) {
+                let part_target_duration = caps.get(1).unwrap().as_str().parse().unwrap();
+                return Ok(Some(Tag::ExtXPartInf {
+                    part_target_duration,
                     part_number: None,
                 }));
             }
@@ -246,18 +257,54 @@ impl Playlist {
 
         if trimmed.starts_with("EXT-X-SERVER-CONTROL") {
             // Example: #EXT-X-SERVER-CONTROL:CAN-PLAY=YES,CAN-SEEK=YES,CAN-PAUSE=YES,MIN-BUFFER-TIME=10.0
-            let server_control_re = Regex::new(r#"EXT-X-SERVER-CONTROL:CAN-PLAY=(\w+),CAN-SEEK=(\w+),CAN-PAUSE=(\w+),MIN-BUFFER-TIME=([\d\.]+)"#).unwrap();
-            if let Some(caps) = server_control_re.captures(trimmed) {
-                let can_play = caps.get(1).unwrap().as_str() == "YES";
-                let can_seek = caps.get(2).unwrap().as_str() == "YES";
-                let can_pause = caps.get(3).unwrap().as_str() == "YES";
-                let min_buffer_time = caps.get(4).unwrap().as_str().parse().unwrap();
+            // Or: #EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=1.32
+            // Parse attributes flexibly
+            let mut can_play = None;
+            let mut can_seek = None;
+            let mut can_pause = None;
+            let mut min_buffer_time = None;
+            let mut can_block_reload = None;
+            let mut part_hold_back = None;
+
+            // Extract all key=value pairs
+            let attr_re = Regex::new(r#"([A-Z-]+)=([^,]+)"#).unwrap();
+            for cap in attr_re.captures_iter(trimmed) {
+                let key = cap.get(1).unwrap().as_str();
+                let value = cap.get(2).unwrap().as_str();
+                match key {
+                    "CAN-PLAY" => can_play = Some(value == "YES"),
+                    "CAN-SEEK" => can_seek = Some(value == "YES"),
+                    "CAN-PAUSE" => can_pause = Some(value == "YES"),
+                    "MIN-BUFFER-TIME" => {
+                        if let Ok(val) = value.parse::<f32>() {
+                            min_buffer_time = Some(val);
+                        }
+                    }
+                    "CAN-BLOCK-RELOAD" => can_block_reload = Some(value == "YES"),
+                    "PART-HOLD-BACK" => {
+                        if let Ok(val) = value.parse::<f32>() {
+                            part_hold_back = Some(val);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            // Only create tag if at least one attribute was found
+            if can_play.is_some()
+                || can_seek.is_some()
+                || can_pause.is_some()
+                || min_buffer_time.is_some()
+                || can_block_reload.is_some()
+                || part_hold_back.is_some()
+            {
                 return Ok(Some(Tag::ExtXServerControl {
-                    can_play: Some(can_play),
-                    can_seek: Some(can_seek),
-                    can_pause: Some(can_pause),
-                    min_buffer_time: Some(min_buffer_time),
-                    can_block_reload: None,
+                    can_play,
+                    can_seek,
+                    can_pause,
+                    min_buffer_time,
+                    can_block_reload,
+                    part_hold_back,
                 }));
             }
         }

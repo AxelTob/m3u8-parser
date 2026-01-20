@@ -92,11 +92,11 @@ pub enum Tag {
         can_pause: Option<bool>,
         min_buffer_time: Option<f32>,
         can_block_reload: Option<bool>,
+        part_hold_back: Option<f32>,
     },
     /// Represents part information.
     ExtXPartInf {
         part_target_duration: f32,
-        part_hold_back: Option<f32>,
         part_number: Option<u64>,
     },
     /// Represents a preload hint.
@@ -358,34 +358,40 @@ impl std::fmt::Display for Tag {
                 can_pause,
                 min_buffer_time,
                 can_block_reload,
+                part_hold_back,
             } => {
                 write!(f, "#EXT-X-SERVER-CONTROL")?;
+                let mut first = true;
                 if let Some(can_block_reload) = can_block_reload {
-                    write!(f, ":CAN-BLOCK-RELOAD={}", if *can_block_reload { "YES" } else { "NO" })?;
+                    write!(f, "{}CAN-BLOCK-RELOAD={}", if first { ":" } else { "," }, if *can_block_reload { "YES" } else { "NO" })?;
+                    first = false;
+                }
+                if let Some(part_hold_back) = part_hold_back {
+                    write!(f, "{}PART-HOLD-BACK={}", if first { ":" } else { "," }, part_hold_back)?;
+                    first = false;
                 }
                 if let Some(can_play) = can_play {
-                    write!(f, ",CAN-PLAY={}", if *can_play { "YES" } else { "NO" })?;
+                    write!(f, "{}CAN-PLAY={}", if first { ":" } else { "," }, if *can_play { "YES" } else { "NO" })?;
+                    first = false;
                 }
                 if let Some(can_seek) = can_seek {
-                    write!(f, ",CAN-SEEK={}", if *can_seek { "YES" } else { "NO" })?;
+                    write!(f, "{}CAN-SEEK={}", if first { ":" } else { "," }, if *can_seek { "YES" } else { "NO" })?;
+                    first = false;
                 }
                 if let Some(can_pause) = can_pause {
-                    write!(f, ",CAN-PAUSE={}", if *can_pause { "YES" } else { "NO" })?;
+                    write!(f, "{}CAN-PAUSE={}", if first { ":" } else { "," }, if *can_pause { "YES" } else { "NO" })?;
+                    first = false;
                 }
                 if let Some(min_buffer_time) = min_buffer_time {
-                    write!(f, ",MIN-BUFFER-TIME={}", min_buffer_time)?;
+                    write!(f, "{}MIN-BUFFER-TIME={}", if first { ":" } else { "," }, min_buffer_time)?;
                 }
                 Ok(())
             }
             Tag::ExtXPartInf {
                 part_target_duration,
-                part_hold_back,
                 part_number,
             } => {
                 write!(f, "#EXT-X-PART-INF:PART-TARGET={}", part_target_duration)?;
-                if let Some(part_hold_back) = part_hold_back {
-                    write!(f, ",PART-HOLD-BACK={}", part_hold_back)?;
-                }
                 if let Some(part_number) = part_number {
                     write!(f, ",PART-NUMBER={}", part_number)?;
                 }
