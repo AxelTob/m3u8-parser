@@ -256,8 +256,7 @@ impl Playlist {
         }
 
         if trimmed.starts_with("EXT-X-SERVER-CONTROL") {
-            // Example: #EXT-X-SERVER-CONTROL:CAN-PLAY=YES,CAN-SEEK=YES,CAN-PAUSE=YES,MIN-BUFFER-TIME=10.0
-            // Or: #EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=1.32
+            // Example: #EXT-X-SERVER-CONTROL:CAN-BLOCK-RELOAD=YES,PART-HOLD-BACK=1.0,CAN-SKIP-UNTIL=24.0
             // Parse attributes flexibly
             let mut can_play = None;
             let mut can_seek = None;
@@ -265,6 +264,7 @@ impl Playlist {
             let mut min_buffer_time = None;
             let mut can_block_reload = None;
             let mut part_hold_back = None;
+            let mut can_skip_until = None;
 
             // Extract all key=value pairs
             let attr_re = Regex::new(r#"([A-Z-]+)=([^,]+)"#).unwrap();
@@ -286,6 +286,11 @@ impl Playlist {
                             part_hold_back = Some(val);
                         }
                     }
+                    "CAN-SKIP-UNTIL" => {
+                        if let Ok(val) = value.parse::<f32>() {
+                            can_skip_until = Some(val);
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -297,6 +302,7 @@ impl Playlist {
                 || min_buffer_time.is_some()
                 || can_block_reload.is_some()
                 || part_hold_back.is_some()
+                || can_skip_until.is_some()
             {
                 return Ok(Some(Tag::ExtXServerControl {
                     can_play,
@@ -305,22 +311,37 @@ impl Playlist {
                     min_buffer_time,
                     can_block_reload,
                     part_hold_back,
+                    can_skip_until,
                 }));
             }
         }
 
         if trimmed.starts_with("EXT-X-SKIP") {
-            // Example: #EXT-X-SKIP:SKIPPED-SEGMENTS=3,URI="skip_segment2.ts"
-            let skip_re =
-                Regex::new(r#"EXT-X-SKIP:SKIPPED-SEGMENTS=(\d+),URI="([^\"]+)""#).unwrap();
-            if let Some(caps) = skip_re.captures(trimmed) {
-                let skipped_segments = caps.get(1).unwrap().as_str().parse().unwrap();
-                let uri = caps.get(2).unwrap().as_str();
+            // Example: #EXT-X-SKIP:SKIPPED-SEGMENTS=3
+            // Optional: ,RECENTLY-REMOVED-DATERANGES="id1\tid2"
+            let mut skipped_segments = None;
+            let mut recently_removed_dateranges = None;
+
+            let attr_re = Regex::new(r#"([A-Z-]+)=("([^"]*)"|([^,]+))"#).unwrap();
+            for cap in attr_re.captures_iter(trimmed) {
+                let key = cap.get(1).unwrap().as_str();
+                // Use quoted value (group 3) if present, otherwise unquoted (group 4)
+                let value = cap.get(3).or(cap.get(4)).unwrap().as_str();
+                match key {
+                    "SKIPPED-SEGMENTS" => {
+                        skipped_segments = value.parse::<u32>().ok();
+                    }
+                    "RECENTLY-REMOVED-DATERANGES" => {
+                        recently_removed_dateranges = Some(value.to_string());
+                    }
+                    _ => {}
+                }
+            }
+
+            if let Some(skipped) = skipped_segments {
                 return Ok(Some(Tag::ExtXSkip {
-                    uri: uri.to_string(),
-                    skipped_segments,
-                    duration: None,
-                    reason: None,
+                    skipped_segments: skipped,
+                    recently_removed_dateranges,
                 }));
             }
         }
@@ -540,9 +561,9 @@ impl Playlist {
             Tag::ExtXStart { time_offset, .. } if time_offset.is_empty() => {
                 errors.push(ValidationError::InvalidStartOffset);
             }
-            Tag::ExtXSkip { duration, .. } if duration.unwrap() <= 0.0 => {
+            Tag::ExtXSkip { skipped_segments, .. } if *skipped_segments == 0 => {
                 errors.push(ValidationError::InvalidSkipTag(
-                    "Duration must be positive".to_string(),
+                    "SKIPPED-SEGMENTS must be positive".to_string(),
                 ));
             }
             Tag::ExtXPreloadHint { uri, .. } if uri.is_empty() => {

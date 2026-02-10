@@ -93,6 +93,7 @@ pub enum Tag {
         min_buffer_time: Option<f32>,
         can_block_reload: Option<bool>,
         part_hold_back: Option<f32>,
+        can_skip_until: Option<f32>,
     },
     /// Represents part information.
     ExtXPartInf {
@@ -114,12 +115,10 @@ pub enum Tag {
         duration: Option<f32>,
         independent: Option<bool>,
     },
-    /// Indicates a skip in the playlist.
+    /// Indicates skipped segments in a Playlist Delta Update (RFC 8216bis Section 4.4.5.2).
     ExtXSkip {
-        uri: String,
-        duration: Option<f32>,
         skipped_segments: u32,
-        reason: Option<String>,
+        recently_removed_dateranges: Option<String>,
     },
     /// Indicates a discontinuity in the media stream.
     ExtXDiscontinuity,
@@ -359,6 +358,7 @@ impl std::fmt::Display for Tag {
                 min_buffer_time,
                 can_block_reload,
                 part_hold_back,
+                can_skip_until,
             } => {
                 write!(f, "#EXT-X-SERVER-CONTROL")?;
                 let mut first = true;
@@ -368,6 +368,10 @@ impl std::fmt::Display for Tag {
                 }
                 if let Some(part_hold_back) = part_hold_back {
                     write!(f, "{}PART-HOLD-BACK={}", if first { ":" } else { "," }, part_hold_back)?;
+                    first = false;
+                }
+                if let Some(can_skip_until) = can_skip_until {
+                    write!(f, "{}CAN-SKIP-UNTIL={}", if first { ":" } else { "," }, can_skip_until)?;
                     first = false;
                 }
                 if let Some(can_play) = can_play {
@@ -428,25 +432,14 @@ impl std::fmt::Display for Tag {
                 Ok(())
             }
             Tag::ExtXSkip {
-                uri,
-                duration,
                 skipped_segments,
-                reason,
+                recently_removed_dateranges,
             } => {
-                let mut output = format!(
-                    "#EXT-X-SKIP:URI=\"{}\",SKIPPED-SEGMENTS={}",
-                    uri, skipped_segments
-                );
-
-                if let Some(duration) = duration {
-                    output.push_str(&format!(",DURATION={}", duration));
+                write!(f, "#EXT-X-SKIP:SKIPPED-SEGMENTS={}", skipped_segments)?;
+                if let Some(dateranges) = recently_removed_dateranges {
+                    write!(f, ",RECENTLY-REMOVED-DATERANGES=\"{}\"", dateranges)?;
                 }
-
-                if let Some(reason) = reason {
-                    output.push_str(&format!(",REASON=\"{}\"", reason));
-                }
-
-                write!(f, "{}", output)
+                Ok(())
             }
             Tag::ExtXDiscontinuity => write!(f, "#EXT-X-DISCONTINUITY"),
             Tag::ExtXSessionData {
