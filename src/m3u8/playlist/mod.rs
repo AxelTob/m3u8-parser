@@ -490,7 +490,7 @@ impl Playlist {
             // let metadata_line = split.get(0).unwrap();
             // let segment = split.get(1).unwrap();
 
-            let extinf_re = Regex::new(r#"EXTINF:(\d+(\.\d+)?),\s*(.*?),?\s*(\S+)"#).unwrap();
+            let extinf_re = Regex::new(r#"EXTINF:(\d+(\.\d+)?),?\s*(.*?),?\s*(\S+)"#).unwrap();
             if let Some(caps) = extinf_re.captures(trimmed) {
                 let duration: f32 = caps.get(1).unwrap().as_str().parse().unwrap();
                 let title = caps
